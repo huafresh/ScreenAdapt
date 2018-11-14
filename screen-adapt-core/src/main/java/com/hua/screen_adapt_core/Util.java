@@ -9,18 +9,18 @@ import android.util.Log;
  */
 
 class Util {
-
+    private static final String LOG_TAG = "ScreenAdapt";
     static boolean debug = false;
 
     static void d(String msg) {
         if (debug) {
-            Log.d("ScreenAdapt: ", msg);
+            Log.d(LOG_TAG, msg);
         }
     }
 
     static void e(String msg) {
         if (debug) {
-            Log.e("ScreenAdapt: ", msg);
+            Log.e(LOG_TAG, msg);
         }
     }
 

@@ -3,8 +3,10 @@ package com.hua.screen_adapt_core;
 import android.annotation.SuppressLint;
 import android.app.Activity;
 import android.app.Application;
+import android.content.ComponentCallbacks;
 import android.content.Context;
 import android.content.Intent;
+import android.content.res.Configuration;
 import android.os.Bundle;
 import android.util.AttributeSet;
 import android.util.DisplayMetrics;
@@ -37,7 +39,7 @@ public class ScreenAdaptManager {
     private static final String KEY_ADAPT_BASE_DIMEN = "key_adapt_base_dimen";
     private Context context;
     private DisplayMetricsInfo originDisplayInfo;
-    private SparseArray<IAdaptDimen> baseDimens;
+    private SparseArray<IAdaptDimen> adaptDimens;
     private List<AttrType> attrTypes = new ArrayList<>();
     private static boolean initialization = false;
     private static Field sFactorySetField;
@@ -65,10 +67,11 @@ public class ScreenAdaptManager {
             this.context = application;
             originDisplayInfo = new DisplayMetricsInfo();
             originDisplayInfo.save(application.getResources().getDisplayMetrics());
-            setAdaptListener(new DefaultAdaptListener());
+//            setAdaptListener(new DefaultAdaptListener());
             application.registerActivityLifecycleCallbacks(new ActivityCallback());
+            application.registerComponentCallbacks(new ConfigChangeCallback());
             DesignInfo.init(context);
-            ensureBaseDimen();
+            ensureAdaptDimen();
             initialization = true;
         }
     }
@@ -115,7 +118,6 @@ public class ScreenAdaptManager {
         LayoutInflater.Factory factory = layoutInflater.getFactory();
         if (factory == null) {
             layoutInflater.setFactory2(customFactory);
-
         } else if (!(factory instanceof AppInflaterFactory)) {
             //factory只能设置一次，这里反射改变这一点。
             if (sFactorySetField == null) {
@@ -129,7 +131,7 @@ public class ScreenAdaptManager {
             }
             if (sFactorySetField != null) {
                 try {
-                    sFactorySetField.set(layoutInflater, true);
+                    sFactorySetField.set(layoutInflater, false);
                 } catch (IllegalAccessException e) {
                     Util.e("reflect set \"mFactorySet\" field value failed: " + e.getMessage());
                     e.printStackTrace();
@@ -164,7 +166,7 @@ public class ScreenAdaptManager {
                 List<View> views = new ArrayList<>();
                 collectViews(view, views);
 
-                IAdaptDimen base = baseDimens.get(baseDimen);
+                IAdaptDimen base = adaptDimens.get(baseDimen);
                 for (View v : views) {
                     for (AttrType attrType : attrTypes) {
                         attrType.adapt(v, base);
@@ -182,7 +184,7 @@ public class ScreenAdaptManager {
 
     public int dp2px(Context context, int dp, int base) {
         initialization((Application) context.getApplicationContext());
-        IAdaptDimen iBaseDimen = baseDimens.get(base);
+        IAdaptDimen iBaseDimen = adaptDimens.get(base);
         return iBaseDimen.dp2px(dp);
     }
 
@@ -192,17 +194,17 @@ public class ScreenAdaptManager {
 
     public int sp2px(Context context, int sp, int base) {
         initialization((Application) context.getApplicationContext());
-        IAdaptDimen iBaseDimen = baseDimens.get(base);
+        IAdaptDimen iBaseDimen = adaptDimens.get(base);
         return iBaseDimen.sp2px(sp);
     }
 
-    private void ensureBaseDimen() {
-        if (baseDimens == null) {
-            baseDimens = new SparseArray<>(4);
-            baseDimens.put(IAdaptDimen.DP_WIDTH_SP_WIDTH, new DpWidthSpWidth());
-            baseDimens.put(IAdaptDimen.DP_WIDTH_SP_HEIGHT, new DpWidthSpHeight());
-            baseDimens.put(IAdaptDimen.DP_HEIGHT_SP_WIDTH, new DpHeightSpWidth());
-            baseDimens.put(IAdaptDimen.DP_HEIGHT_SP_HEIGHT, new DpHeightSpHeight());
+    private void ensureAdaptDimen() {
+        if (adaptDimens == null) {
+            adaptDimens = new SparseArray<>(4);
+            adaptDimens.put(IAdaptDimen.DP_WIDTH_SP_WIDTH, new DpWidthSpWidth());
+            adaptDimens.put(IAdaptDimen.DP_WIDTH_SP_HEIGHT, new DpWidthSpHeight());
+            adaptDimens.put(IAdaptDimen.DP_HEIGHT_SP_WIDTH, new DpHeightSpWidth());
+            adaptDimens.put(IAdaptDimen.DP_HEIGHT_SP_HEIGHT, new DpHeightSpHeight());
         }
     }
 
@@ -210,39 +212,39 @@ public class ScreenAdaptManager {
         originDisplayInfo.restore(context.getResources().getDisplayMetrics());
     }
 
-    private AdaptListener mAutoAdaptListener;
+//    private AdaptListener mAutoAdaptListener;
+//
+//    public interface AdaptListener {
+//        /**
+//         * execute adapt.
+//         * 适配的原理就是在LayoutInflater创建View之前，动态的修改系统DisplayMetrics的值。
+//         * 可以参考：https://mp.weixin.qq.com/s/d9QCoBP6kV9VSWvVldVVwA
+//         *
+//         * @param context    Context
+//         * @param attrInfo   attr info resolved from xml, if not set, use default value.
+//         * @param sysMetrics change this object base on {@code attrInfo}
+//         */
+//        void adapt(Context context, XmlAttrInfo attrInfo, DisplayMetrics sysMetrics);
+//    }
+//
+//    public void setAdaptListener(AdaptListener listener) {
+//        mAutoAdaptListener = listener;
+//    }
 
-    public interface AdaptListener {
-        /**
-         * execute adapt.
-         * 适配的原理就是在LayoutInflater创建View之前，动态的修改系统DisplayMetrics的值。
-         * 可以参考：https://mp.weixin.qq.com/s/d9QCoBP6kV9VSWvVldVVwA
-         *
-         * @param context    Context
-         * @param attrInfo   attr info resolved from xml, if not set, use default value.
-         * @param sysMetrics change this object base on {@code attrInfo}
-         */
-        void adapt(Context context, XmlAttrInfo attrInfo, DisplayMetrics sysMetrics);
-    }
-
-    public void setAdaptListener(AdaptListener listener) {
-        mAutoAdaptListener = listener;
-    }
-
-    private class DefaultAdaptListener implements AdaptListener {
-
-        @Override
-        public void adapt(Context context, XmlAttrInfo attrInfo, DisplayMetrics sysMetrics) {
-            if (!attrInfo.disable) {
-                IAdaptDimen baseDimen = baseDimens.get(attrInfo.baseDimen);
-                if (baseDimen != null) {
-                    baseDimen.adapt(sysMetrics);
-                }
-            } else {
-                restoreSysMetricsInfo();
-            }
-        }
-    }
+//    private class DefaultAdaptListener implements AdaptListener {
+//
+//        @Override
+//        public void adapt(Context context, XmlAttrInfo attrInfo, DisplayMetrics sysMetrics) {
+//            if (!attrInfo.disable) {
+//                IAdaptDimen baseDimen = adaptDimens.get(attrInfo.baseDimen);
+//                if (baseDimen != null) {
+//                    baseDimen.adapt(sysMetrics);
+//                }
+//            } else {
+//                restoreSysMetricsInfo();
+//            }
+//        }
+//    }
 
     private class AppInflaterFactory implements LayoutInflater.Factory2 {
         boolean hasEnable;
@@ -277,25 +279,29 @@ public class ScreenAdaptManager {
 
         @Override
         public View onCreateView(View parent, String name, Context context, AttributeSet attrs) {
-            if (!wantEnable) {
-                if (hasEnable) {
-                    restoreSysMetricsInfo();
-                    hasEnable = false;
-                    Util.d("Disable screen adapt. Activity = " + activity.getClass().getCanonicalName());
+            if (activity.get() != null) {
+                if (!wantEnable) {
+                    if (hasEnable) {
+                        restoreSysMetricsInfo();
+                        hasEnable = false;
+                        Util.d("Disable screen adapt. Activity = " +
+                                activity.get().getClass().getCanonicalName());
+                    }
+                } else if (!hasEnable) {
+                    IAdaptDimen iBaseDimen = adaptDimens.get(baseDimen);
+                    if (iBaseDimen == null) {
+                        iBaseDimen = adaptDimens.get(IAdaptDimen.DP_WIDTH_SP_HEIGHT);
+                        Util.e("bad baseDimen: " + baseDimen +
+                                ". use default baseDimen. Activity = " +
+                                activity.getClass().getCanonicalName());
+                    }
+                    iBaseDimen.adapt(context.getResources().getDisplayMetrics());
+                    hasEnable = true;
+                    Util.d("Enable screen adapt. Activity = " +
+                            activity.get().getClass().getCanonicalName());
                 }
-            } else if (!hasEnable && activity.get() != null) {
-                IAdaptDimen iBaseDimen = baseDimens.get(baseDimen);
-                if (iBaseDimen == null) {
-                    iBaseDimen = baseDimens.get(IAdaptDimen.DP_WIDTH_SP_HEIGHT);
-                    Util.e("bad baseDimen: " + baseDimen +
-                            ". change to default baseDimen. Activity = " +
-                            activity.getClass().getCanonicalName());
-                }
-                iBaseDimen.adapt(context.getResources().getDisplayMetrics());
-                hasEnable = true;
-                Util.d("Enable screen adapt. Activity = " + activity.getClass().getCanonicalName());
-            }
 
+            }
             return null;
         }
 
@@ -313,7 +319,7 @@ public class ScreenAdaptManager {
             setCustomFactory(activity);
             long cost = System.currentTimeMillis() - before;
             Util.d("setCustomFactory cost time = " + cost +
-                    ". Activity = " + activity.getClass().getCanonicalName());
+                    "ms. Activity = " + activity.getClass().getCanonicalName());
         }
 
         @Override
@@ -364,5 +370,20 @@ public class ScreenAdaptManager {
         attrTypes.add(attrType);
     }
 
+    private class ConfigChangeCallback implements ComponentCallbacks {
+
+        @Override
+        public void onConfigurationChanged(Configuration newConfig) {
+            if (newConfig != null && newConfig.fontScale > 0) {
+                restoreSysMetricsInfo();
+                originDisplayInfo.scaledDensity = context.getResources().getDisplayMetrics().scaledDensity;
+            }
+        }
+
+        @Override
+        public void onLowMemory() {
+
+        }
+    }
 
 }
