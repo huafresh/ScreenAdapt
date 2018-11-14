@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!--屏幕适配-->
+    <declare-styleable name="AutoAdapt">
+        <attr name="disable" format="boolean" />
+        <attr name="baseDimen" format="integer">
+            <flag name="dpWidthSpWidth" value="1" />
+            <flag name="dpWidthSpHeight" value="2" />
+            <flag name="dpHeightSpWidth" value="3" />
+            <flag name="dpHeightSpHeight" value="4" />
+        </attr>
+    </declare-styleable>
+</resources>
