@@ -27,44 +27,44 @@ public abstract class AttrType {
     public static class WidthHeight extends AttrType {
 
         @Override
-        public void adapt(View view, IAdaptDimen baseDimen) {
+        public void adapt(View view, IAdaptService service) {
             ViewGroup.LayoutParams layoutParams = view.getLayoutParams();
             if (layoutParams.width > 0) {
-                layoutParams.width = baseDimen.getNewPxForDp(layoutParams.width);
+                layoutParams.width = service.getNewPxForDp(layoutParams.width);
             }
             if (layoutParams.height > 0) {
-                layoutParams.height = baseDimen.getNewPxForDp(layoutParams.height);
+                layoutParams.height = service.getNewPxForDp(layoutParams.height);
             }
         }
     }
 
     public static class Padding extends AttrType {
         @Override
-        public void adapt(View view, IAdaptDimen baseDimen) {
+        public void adapt(View view, IAdaptService service) {
             int left = view.getPaddingLeft();
             int top = view.getPaddingTop();
             int right = view.getPaddingRight();
             int bottom = view.getPaddingBottom();
 
             view.setPadding(
-                    baseDimen.getNewPxForDp(left),
-                    baseDimen.getNewPxForDp(top),
-                    baseDimen.getNewPxForDp(right),
-                    baseDimen.getNewPxForDp(bottom)
+                    service.getNewPxForDp(left),
+                    service.getNewPxForDp(top),
+                    service.getNewPxForDp(right),
+                    service.getNewPxForDp(bottom)
             );
         }
     }
 
     public static class Margin extends AttrType {
         @Override
-        public void adapt(View view, IAdaptDimen baseDimen) {
+        public void adapt(View view, IAdaptService service) {
             ViewGroup.LayoutParams params = view.getLayoutParams();
             if (params instanceof ViewGroup.MarginLayoutParams) {
                 ViewGroup.MarginLayoutParams marginParams = (ViewGroup.MarginLayoutParams) params;
-                marginParams.leftMargin = baseDimen.getNewPxForDp(marginParams.leftMargin);
-                marginParams.topMargin = baseDimen.getNewPxForDp(marginParams.topMargin);
-                marginParams.rightMargin = baseDimen.getNewPxForDp(marginParams.rightMargin);
-                marginParams.bottomMargin = baseDimen.getNewPxForDp(marginParams.bottomMargin);
+                marginParams.leftMargin = service.getNewPxForDp(marginParams.leftMargin);
+                marginParams.topMargin = service.getNewPxForDp(marginParams.topMargin);
+                marginParams.rightMargin = service.getNewPxForDp(marginParams.rightMargin);
+                marginParams.bottomMargin = service.getNewPxForDp(marginParams.bottomMargin);
             }
         }
     }
@@ -72,10 +72,10 @@ public abstract class AttrType {
     public static class TextSize extends AttrType {
 
         @Override
-        public void adapt(View view, IAdaptDimen baseDimen) {
+        public void adapt(View view, IAdaptService service) {
             if (view instanceof TextView) {
                 TextView textView = (TextView) view;
-                textView.setTextSize(TypedValue.COMPLEX_UNIT_PX, baseDimen.getNewPxForSp(textView.getTextSize()));
+                textView.setTextSize(TypedValue.COMPLEX_UNIT_PX, service.getNewPxForSp(textView.getTextSize()));
             }
         }
     }
@@ -86,6 +86,6 @@ public abstract class AttrType {
      *
      * @param view View
      */
-    public abstract void adapt(View view, IAdaptDimen baseDimen);
+    public abstract void adapt(View view, IAdaptService service);
 
 }

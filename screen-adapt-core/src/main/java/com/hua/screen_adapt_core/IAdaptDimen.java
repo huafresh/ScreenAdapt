@@ -10,49 +10,19 @@ import android.util.DisplayMetrics;
  */
 
 public interface IAdaptDimen {
-    int DP_WIDTH_SP_WIDTH = 0;
-    int DP_WIDTH_SP_HEIGHT = 1;
-    int DP_HEIGHT_SP_WIDTH = 2;
-    int DP_HEIGHT_SP_HEIGHT = 3;
 
     /**
-     * 执行适配
+     * 维度唯一标识
      *
-     * @param displayMetrics inflate display metrics into this object
+     * @return id
      */
-    void adapt(DisplayMetrics displayMetrics);
+    int id();
 
     /**
-     * 根据当前的px值，获取适配后的px值。
-     * 换算基于dp
+     * 根据系统原来的DisplayMetricsInfo，创建给定维度的DisplayMetricsInfo
      *
-     * @param curPx px before adapt
-     * @return px after adapt
+     * @param origin 系统原来的DisplayMetricsInfo
+     * @return 给定维度的DisplayMetricsInfo
      */
-    int getNewPxForDp(int curPx);
-
-    /**
-     * 根据当前的px值，获取适配后的px值。
-     * 换算基于sp
-     *
-     * @param curPx px before adapt
-     * @return px after adapt
-     */
-    int getNewPxForSp(float curPx);
-
-    /**
-     * dp转px
-     *
-     * @param dp dp value
-     * @return px value
-     */
-    int dp2px(float dp);
-
-    /**
-     * sp转px
-     *
-     * @param sp sp value
-     * @return px value
-     */
-    int sp2px(float sp);
+    DisplayMetricsInfo createAdaptInfo(DisplayMetricsInfo origin);
 }

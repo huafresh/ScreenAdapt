@@ -9,7 +9,6 @@ import android.content.Intent;
 import android.content.res.Configuration;
 import android.os.Bundle;
 import android.util.AttributeSet;
-import android.util.DisplayMetrics;
 import android.util.SparseArray;
 import android.view.LayoutInflater;
 import android.view.View;
@@ -35,14 +34,19 @@ import java.util.List;
 
 public class ScreenAdaptManager {
 
+    public static final int DP_WIDTH_SP_WIDTH = 0;
+    public static final int DP_WIDTH_SP_HEIGHT = 1;
+    public static final int DP_HEIGHT_SP_WIDTH = 2;
+    public static final int DP_HEIGHT_SP_HEIGHT = 3;
     private static final String KEY_ENABLE_ADAPT = "key_auto_adapt_enable_adapt";
     private static final String KEY_ADAPT_BASE_DIMEN = "key_adapt_base_dimen";
     private Context context;
     private DisplayMetricsInfo originDisplayInfo;
-    private SparseArray<IAdaptDimen> adaptDimens;
+    private SparseArray<IAdaptService> adaptServices;
     private List<AttrType> attrTypes = new ArrayList<>();
     private static boolean initialization = false;
     private static Field sFactorySetField;
+    private boolean adaptEnable = false;
 
 
     public static ScreenAdaptManager get() {
@@ -71,7 +75,7 @@ public class ScreenAdaptManager {
             application.registerActivityLifecycleCallbacks(new ActivityCallback());
             application.registerComponentCallbacks(new ConfigChangeCallback());
             DesignInfo.init(context);
-            ensureAdaptDimen();
+            ensureAdaptService();
             initialization = true;
         }
     }
@@ -91,7 +95,7 @@ public class ScreenAdaptManager {
      * @param activity Activity
      */
     public void adapt(Activity activity) {
-        this.adapt(activity, IAdaptDimen.DP_WIDTH_SP_HEIGHT);
+        this.adapt(activity, DP_WIDTH_SP_HEIGHT);
     }
 
     /**
@@ -144,7 +148,7 @@ public class ScreenAdaptManager {
     }
 
     public void adapt(final View view) {
-        adapt(view, IAdaptDimen.DP_WIDTH_SP_HEIGHT);
+        adapt(view, DP_WIDTH_SP_HEIGHT);
     }
 
     /**
@@ -166,7 +170,7 @@ public class ScreenAdaptManager {
                 List<View> views = new ArrayList<>();
                 collectViews(view, views);
 
-                IAdaptDimen base = adaptDimens.get(baseDimen);
+                IAdaptService base = adaptServices.get(baseDimen);
                 for (View v : views) {
                     for (AttrType attrType : attrTypes) {
                         attrType.adapt(v, base);
@@ -179,32 +183,74 @@ public class ScreenAdaptManager {
     }
 
     public int dp2px(Context context, int dp) {
-        return dp2px(context, dp, IAdaptDimen.DP_WIDTH_SP_HEIGHT);
+        return dp2px(context, dp, DP_WIDTH_SP_HEIGHT);
     }
 
     public int dp2px(Context context, int dp, int base) {
         initialization((Application) context.getApplicationContext());
-        IAdaptDimen iBaseDimen = adaptDimens.get(base);
+        IAdaptService iBaseDimen = adaptServices.get(base);
         return iBaseDimen.dp2px(dp);
     }
 
     public int sp2px(Context context, int sp) {
-        return sp2px(context, sp, IAdaptDimen.DP_WIDTH_SP_HEIGHT);
+        return sp2px(context, sp, DP_WIDTH_SP_HEIGHT);
     }
 
     public int sp2px(Context context, int sp, int base) {
         initialization((Application) context.getApplicationContext());
-        IAdaptDimen iBaseDimen = adaptDimens.get(base);
+        IAdaptService iBaseDimen = adaptServices.get(base);
         return iBaseDimen.sp2px(sp);
     }
 
-    private void ensureAdaptDimen() {
-        if (adaptDimens == null) {
-            adaptDimens = new SparseArray<>(4);
-            adaptDimens.put(IAdaptDimen.DP_WIDTH_SP_WIDTH, new DpWidthSpWidth());
-            adaptDimens.put(IAdaptDimen.DP_WIDTH_SP_HEIGHT, new DpWidthSpHeight());
-            adaptDimens.put(IAdaptDimen.DP_HEIGHT_SP_WIDTH, new DpHeightSpWidth());
-            adaptDimens.put(IAdaptDimen.DP_HEIGHT_SP_HEIGHT, new DpHeightSpHeight());
+    public void enableAdapt() {
+        enableAdapt(DP_WIDTH_SP_HEIGHT);
+    }
+
+    public synchronized void enableAdapt(int base) {
+        IAdaptService adaptService = adaptServices.get(base);
+        if (adaptService == null) {
+            Util.e("attempt enable adapt with a bad base = " + base +
+                    ". change to default base: DP_WIDTH_SP_HEIGHT");
+            base = DP_WIDTH_SP_HEIGHT;
+            adaptService = adaptServices.get(base);
+        }
+        adaptService.adapt(context.getResources().getDisplayMetrics());
+        adaptEnable = true;
+        Util.d("enable screen adapt successful. base = " + getBaseStringByInt(base));
+    }
+
+    private static String getBaseStringByInt(int base){
+        switch (base) {
+            case DP_WIDTH_SP_WIDTH:
+                return "DP_WIDTH_SP_WIDTH";
+            case DP_WIDTH_SP_HEIGHT:
+                return "DP_WIDTH_SP_HEIGHT";
+            case DP_HEIGHT_SP_WIDTH:
+                return "DP_HEIGHT_SP_WIDTH";
+            case DP_HEIGHT_SP_HEIGHT:
+                return "DP_HEIGHT_SP_HEIGHT";
+            default:
+                return "invalid base value";
+        }
+    }
+
+    public synchronized void cancelAdapt() {
+        restoreSysMetricsInfo();
+        adaptEnable = false;
+        Util.d("cancel screen adapt successful.");
+    }
+
+    private void ensureAdaptService() {
+        if (adaptServices == null) {
+            adaptServices = new SparseArray<>(4);
+            IAdaptDimen dimen1 = new DpWidthSpWidth();
+            IAdaptDimen dimen2 = new DpWidthSpHeight();
+            IAdaptDimen dimen3 = new DpHeightSpWidth();
+            IAdaptDimen dimen4 = new DpHeightSpHeight();
+            adaptServices.put(dimen1.id(), new AdaptServiceImpl(dimen1.createAdaptInfo(originDisplayInfo)));
+            adaptServices.put(dimen2.id(), new AdaptServiceImpl(dimen2.createAdaptInfo(originDisplayInfo)));
+            adaptServices.put(dimen3.id(), new AdaptServiceImpl(dimen3.createAdaptInfo(originDisplayInfo)));
+            adaptServices.put(dimen4.id(), new AdaptServiceImpl(dimen4.createAdaptInfo(originDisplayInfo)));
         }
     }
 
@@ -212,48 +258,13 @@ public class ScreenAdaptManager {
         originDisplayInfo.restore(context.getResources().getDisplayMetrics());
     }
 
-//    private AdaptListener mAutoAdaptListener;
-//
-//    public interface AdaptListener {
-//        /**
-//         * execute adapt.
-//         * 适配的原理就是在LayoutInflater创建View之前，动态的修改系统DisplayMetrics的值。
-//         * 可以参考：https://mp.weixin.qq.com/s/d9QCoBP6kV9VSWvVldVVwA
-//         *
-//         * @param context    Context
-//         * @param attrInfo   attr info resolved from xml, if not set, use default value.
-//         * @param sysMetrics change this object base on {@code attrInfo}
-//         */
-//        void adapt(Context context, XmlAttrInfo attrInfo, DisplayMetrics sysMetrics);
-//    }
-//
-//    public void setAdaptListener(AdaptListener listener) {
-//        mAutoAdaptListener = listener;
-//    }
-
-//    private class DefaultAdaptListener implements AdaptListener {
-//
-//        @Override
-//        public void adapt(Context context, XmlAttrInfo attrInfo, DisplayMetrics sysMetrics) {
-//            if (!attrInfo.disable) {
-//                IAdaptDimen baseDimen = adaptDimens.get(attrInfo.baseDimen);
-//                if (baseDimen != null) {
-//                    baseDimen.adapt(sysMetrics);
-//                }
-//            } else {
-//                restoreSysMetricsInfo();
-//            }
-//        }
-//    }
-
     private class AppInflaterFactory implements LayoutInflater.Factory2 {
-        boolean hasEnable;
 
         @Override
         public View onCreateView(View parent, String name, Context context, AttributeSet attrs) {
-            if (hasEnable) {
-                restoreSysMetricsInfo();
-                hasEnable = false;
+            if (adaptEnable) {
+                Util.d("use application LayoutInflater. so cancel screen adapt.");
+                cancelAdapt();
             }
             return null;
         }
@@ -274,33 +285,33 @@ public class ScreenAdaptManager {
             Intent intent = activity.getIntent();
             this.wantEnable = intent.getBooleanExtra(KEY_ENABLE_ADAPT, false);
             this.baseDimen = intent.getIntExtra(KEY_ADAPT_BASE_DIMEN, -1);
-            this.hasEnable = false;
+            if (wantEnable && adaptEnable) {
+                Util.d("activity = " +
+                        activity.getClass().getCanonicalName() +
+                        " want enable screen adapt. and screen adapt already enabled");
+            } else {
+                Util.d("activity = " +
+                        activity.getClass().getCanonicalName() +
+                        " want cancel screen adapt. and screen adapt already canceled");
+            }
         }
 
         @Override
         public View onCreateView(View parent, String name, Context context, AttributeSet attrs) {
             if (activity.get() != null) {
                 if (!wantEnable) {
-                    if (hasEnable) {
-                        restoreSysMetricsInfo();
-                        hasEnable = false;
-                        Util.d("Disable screen adapt. Activity = " +
-                                activity.get().getClass().getCanonicalName());
+                    if (adaptEnable) {
+                        Util.d("activity = " +
+                                activity.get().getClass().getCanonicalName() +
+                                " cancel screen adapt");
+                        cancelAdapt();
                     }
-                } else if (!hasEnable) {
-                    IAdaptDimen iBaseDimen = adaptDimens.get(baseDimen);
-                    if (iBaseDimen == null) {
-                        iBaseDimen = adaptDimens.get(IAdaptDimen.DP_WIDTH_SP_HEIGHT);
-                        Util.e("bad baseDimen: " + baseDimen +
-                                ". use default baseDimen. Activity = " +
-                                activity.getClass().getCanonicalName());
-                    }
-                    iBaseDimen.adapt(context.getResources().getDisplayMetrics());
-                    hasEnable = true;
-                    Util.d("Enable screen adapt. Activity = " +
-                            activity.get().getClass().getCanonicalName());
+                } else if (!adaptEnable) {
+                    Util.d("activity = " +
+                            activity.get().getClass().getCanonicalName() +
+                            " enable screen adapt");
+                    enableAdapt(baseDimen);
                 }
-
             }
             return null;
         }
@@ -375,8 +386,10 @@ public class ScreenAdaptManager {
         @Override
         public void onConfigurationChanged(Configuration newConfig) {
             if (newConfig != null && newConfig.fontScale > 0) {
-                restoreSysMetricsInfo();
                 originDisplayInfo.scaledDensity = context.getResources().getDisplayMetrics().scaledDensity;
+                adaptServices = null;
+                ensureAdaptService();
+                Util.d("font scale config has changed. recalculate adapt info");
             }
         }
 
