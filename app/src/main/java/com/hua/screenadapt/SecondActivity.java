@@ -1,5 +1,6 @@
 package com.hua.screenadapt;
 
+import android.content.Intent;
 import android.os.Bundle;
 import android.support.annotation.Nullable;
 import android.support.v7.app.AppCompatActivity;
@@ -35,6 +36,13 @@ public class SecondActivity extends AppCompatActivity {
             @Override
             public void onClick(View v) {
                 LayoutInflater.from(SecondActivity.this).inflate(R.layout.layout_temp, null);
+            }
+        });
+
+        findViewById(R.id.third).setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                startActivity(new Intent(SecondActivity.this, ThirdActivity.class));
             }
         });
     }
