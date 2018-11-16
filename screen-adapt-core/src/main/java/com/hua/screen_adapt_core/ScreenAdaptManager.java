@@ -38,8 +38,9 @@ public class ScreenAdaptManager {
     public static final int DP_WIDTH_SP_HEIGHT = 1;
     public static final int DP_HEIGHT_SP_WIDTH = 2;
     public static final int DP_HEIGHT_SP_HEIGHT = 3;
-    private static final String KEY_ENABLE_ADAPT = "key_auto_adapt_enable_adapt";
+    private static final String KEY_ADAPT_ENABLE = "key_has_set_factory";
     private static final String KEY_ADAPT_BASE_DIMEN = "key_adapt_base_dimen";
+    private static final String KEY_has_set_factory = "KEY_has_set_factory";
     private Context context;
     private DisplayMetricsInfo originDisplayInfo;
     private SparseArray<IAdaptService> adaptServices;
@@ -66,16 +67,22 @@ public class ScreenAdaptManager {
         attrTypes.addAll(AttrType.getDefaultAttrTypeList());
     }
 
-    private void initialization(Application application) {
+    private void ensureInitialization() {
+        if (!initialization) {
+            throw new IllegalStateException("call init() first");
+        }
+    }
+
+    public void init(Application application) {
         if (!initialization) {
             this.context = application;
             originDisplayInfo = new DisplayMetricsInfo();
             originDisplayInfo.save(application.getResources().getDisplayMetrics());
-//            setAdaptListener(new DefaultAdaptListener());
             application.registerActivityLifecycleCallbacks(new ActivityCallback());
             application.registerComponentCallbacks(new ConfigChangeCallback());
             DesignInfo.init(context);
             ensureAdaptService();
+            forceSetFactoryIfNeed(LayoutInflater.from(application), new AppInflaterFactory());
             initialization = true;
         }
     }
@@ -105,46 +112,50 @@ public class ScreenAdaptManager {
      * @param baseDimen 适配维度
      */
     public void adapt(Activity activity, int baseDimen) {
-        initialization(activity.getApplication());
-        activity.getIntent().putExtra(KEY_ENABLE_ADAPT, true);
-        activity.getIntent().putExtra(KEY_ADAPT_BASE_DIMEN, baseDimen);
+        ensureInitialization();
+        Intent intent = activity.getIntent();
+        boolean hasSetFactory = intent.getBooleanExtra(KEY_has_set_factory, false);
+        if (!hasSetFactory) {
+            ActivityInflaterFactory factory = new ActivityInflaterFactory(activity);
+            forceSetFactoryIfNeed(activity.getLayoutInflater(), factory);
+            intent.putExtra(KEY_ADAPT_ENABLE, true);
+            intent.putExtra(KEY_ADAPT_BASE_DIMEN, baseDimen);
+        }
     }
 
-    private void setCustomFactory(Context context) {
-        LayoutInflater.Factory2 customFactory;
-        if (context instanceof Activity) {
-            customFactory = new ActivityInflaterFactory((Activity) context);
-        } else {
-            customFactory = new AppInflaterFactory();
+
+    private static void forceSetFactoryIfNeed(LayoutInflater layoutInflater, LayoutInflater.Factory2 factory) {
+        if (layoutInflater.getFactory() == null) {
+            layoutInflater.setFactory2(factory);
+            return;
         }
 
-        LayoutInflater layoutInflater = LayoutInflater.from(context);
-        LayoutInflater.Factory factory = layoutInflater.getFactory();
-        if (factory == null) {
-            layoutInflater.setFactory2(customFactory);
-        } else if (!(factory instanceof AppInflaterFactory)) {
-            //factory只能设置一次，这里反射改变这一点。
-            if (sFactorySetField == null) {
-                try {
-                    sFactorySetField = LayoutInflater.class.getDeclaredField("mFactorySet");
-                    sFactorySetField.setAccessible(true);
-                } catch (NoSuchFieldException e) {
-                    Util.e("reflect get \"mFactorySet\" field failed: " + e.getMessage());
-                    e.printStackTrace();
-                }
-            }
-            if (sFactorySetField != null) {
-                try {
-                    sFactorySetField.set(layoutInflater, false);
-                } catch (IllegalAccessException e) {
-                    Util.e("reflect set \"mFactorySet\" field value failed: " + e.getMessage());
-                    e.printStackTrace();
-                }
-            }
+        long before = System.currentTimeMillis();
 
-            //LayoutInflater会把新旧的factory合并，因此不用担心覆盖。
-            layoutInflater.setFactory2(customFactory);
+        //factory只能设置一次，这里反射改变这一点。
+        if (sFactorySetField == null) {
+            try {
+                sFactorySetField = LayoutInflater.class.getDeclaredField("mFactorySet");
+                sFactorySetField.setAccessible(true);
+            } catch (NoSuchFieldException e) {
+                Util.e("reflect get \"mFactorySet\" field failed: " + e.getMessage());
+                e.printStackTrace();
+            }
         }
+        if (sFactorySetField != null) {
+            try {
+                sFactorySetField.set(layoutInflater, false);
+            } catch (IllegalAccessException e) {
+                Util.e("reflect set \"mFactorySet\" field value failed: " + e.getMessage());
+                e.printStackTrace();
+            }
+        }
+
+        //LayoutInflater会把新旧的factory合并，因此不用担心覆盖。
+        layoutInflater.setFactory2(factory);
+
+        long cost = System.currentTimeMillis() - before;
+        Util.d("force set factory cost time = " + cost + "ms.");
     }
 
     public void adapt(final View view) {
@@ -163,7 +174,7 @@ public class ScreenAdaptManager {
      * @param baseDimen 适配维度
      */
     public void adapt(final View view, final int baseDimen) {
-        initialization((Application) view.getContext().getApplicationContext());
+        ensureInitialization();
         view.post(new Runnable() {
             @Override
             public void run() {
@@ -187,7 +198,7 @@ public class ScreenAdaptManager {
     }
 
     public int dp2px(Context context, int dp, int base) {
-        initialization((Application) context.getApplicationContext());
+        ensureInitialization();
         IAdaptService iBaseDimen = adaptServices.get(base);
         return iBaseDimen.dp2px(dp);
     }
@@ -197,7 +208,7 @@ public class ScreenAdaptManager {
     }
 
     public int sp2px(Context context, int sp, int base) {
-        initialization((Application) context.getApplicationContext());
+        ensureInitialization();
         IAdaptService iBaseDimen = adaptServices.get(base);
         return iBaseDimen.sp2px(sp);
     }
@@ -206,20 +217,22 @@ public class ScreenAdaptManager {
         enableAdapt(DP_WIDTH_SP_HEIGHT);
     }
 
-    public synchronized void enableAdapt(int base) {
-        IAdaptService adaptService = adaptServices.get(base);
-        if (adaptService == null) {
-            Util.e("attempt enable adapt with a bad base = " + base +
-                    ". change to default base: DP_WIDTH_SP_HEIGHT");
-            base = DP_WIDTH_SP_HEIGHT;
-            adaptService = adaptServices.get(base);
+    public void enableAdapt(int base) {
+        if (!adaptEnable) {
+            IAdaptService adaptService = adaptServices.get(base);
+            if (adaptService == null) {
+                Util.e("attempt enable adapt with a bad base = " + base +
+                        ". change to default base: DP_WIDTH_SP_HEIGHT");
+                base = DP_WIDTH_SP_HEIGHT;
+                adaptService = adaptServices.get(base);
+            }
+            adaptService.adapt(context.getResources().getDisplayMetrics());
+            adaptEnable = true;
+            Util.d("enable screen adapt successful. base = " + getBaseStringByInt(base));
         }
-        adaptService.adapt(context.getResources().getDisplayMetrics());
-        adaptEnable = true;
-        Util.d("enable screen adapt successful. base = " + getBaseStringByInt(base));
     }
 
-    private static String getBaseStringByInt(int base){
+    private static String getBaseStringByInt(int base) {
         switch (base) {
             case DP_WIDTH_SP_WIDTH:
                 return "DP_WIDTH_SP_WIDTH";
@@ -234,10 +247,12 @@ public class ScreenAdaptManager {
         }
     }
 
-    public synchronized void cancelAdapt() {
-        restoreSysMetricsInfo();
-        adaptEnable = false;
-        Util.d("cancel screen adapt successful.");
+    public void cancelAdapt() {
+        if (adaptEnable) {
+            restoreSysMetricsInfo();
+            adaptEnable = false;
+            Util.d("cancel screen adapt successful.");
+        }
     }
 
     private void ensureAdaptService() {
@@ -278,38 +293,20 @@ public class ScreenAdaptManager {
     private class ActivityInflaterFactory extends AppInflaterFactory {
         private int baseDimen;
         private WeakReference<Activity> activity;
-        private final boolean wantEnable;
 
         private ActivityInflaterFactory(Activity activity) {
             this.activity = new WeakReference<Activity>(activity);
             Intent intent = activity.getIntent();
-            this.wantEnable = intent.getBooleanExtra(KEY_ENABLE_ADAPT, false);
-            this.baseDimen = intent.getIntExtra(KEY_ADAPT_BASE_DIMEN, -1);
-            if (wantEnable && adaptEnable) {
-                Util.d("activity = " +
-                        activity.getClass().getCanonicalName() +
-                        " want enable screen adapt. and screen adapt already enabled");
-            } else {
-                Util.d("activity = " +
-                        activity.getClass().getCanonicalName() +
-                        " want cancel screen adapt. and screen adapt already canceled");
-            }
+            this.baseDimen = intent.getIntExtra(KEY_ADAPT_BASE_DIMEN, DP_WIDTH_SP_HEIGHT);
         }
 
         @Override
         public View onCreateView(View parent, String name, Context context, AttributeSet attrs) {
             if (activity.get() != null) {
-                if (!wantEnable) {
-                    if (adaptEnable) {
-                        Util.d("activity = " +
-                                activity.get().getClass().getCanonicalName() +
-                                " cancel screen adapt");
-                        cancelAdapt();
-                    }
-                } else if (!adaptEnable) {
+                if (!adaptEnable) {
                     Util.d("activity = " +
                             activity.get().getClass().getCanonicalName() +
-                            " enable screen adapt");
+                            " want enable screen adapt. so do it");
                     enableAdapt(baseDimen);
                 }
             }
@@ -326,11 +323,14 @@ public class ScreenAdaptManager {
 
         @Override
         public void onActivityCreated(Activity activity, Bundle savedInstanceState) {
-            long before = System.currentTimeMillis();
-            setCustomFactory(activity);
-            long cost = System.currentTimeMillis() - before;
-            Util.d("setCustomFactory cost time = " + cost +
-                    "ms. Activity = " + activity.getClass().getCanonicalName());
+            Intent intent = activity.getIntent();
+            boolean wantEnable = intent.getBooleanExtra(KEY_ADAPT_ENABLE, false);
+            if (!wantEnable && adaptEnable) {
+                Util.d("activity = " +
+                        activity.getClass().getCanonicalName() +
+                        " don't want enable screen adapt. so cancel it");
+                cancelAdapt();
+            }
         }
 
         @Override
@@ -345,7 +345,12 @@ public class ScreenAdaptManager {
 
         @Override
         public void onActivityPaused(Activity activity) {
-
+            if (activity.isFinishing() && adaptEnable) {
+                Util.d("activity = " +
+                        activity.getClass().getCanonicalName() +
+                        " is going to finish. so cancel screen adapt");
+                cancelAdapt();
+            }
         }
 
         @Override
