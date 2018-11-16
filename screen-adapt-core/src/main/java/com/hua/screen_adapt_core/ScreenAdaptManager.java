@@ -306,7 +306,7 @@ public class ScreenAdaptManager {
                 if (!adaptEnable) {
                     Util.d("activity = " +
                             activity.get().getClass().getCanonicalName() +
-                            " want enable screen adapt. so do it");
+                            " enable screen adapt.");
                     enableAdapt(baseDimen);
                 }
             }
@@ -325,10 +325,16 @@ public class ScreenAdaptManager {
         public void onActivityCreated(Activity activity, Bundle savedInstanceState) {
             Intent intent = activity.getIntent();
             boolean wantEnable = intent.getBooleanExtra(KEY_ADAPT_ENABLE, false);
+            if(wantEnable && adaptEnable){
+                Util.d("activity = " +
+                        activity.getClass().getCanonicalName() +
+                        " want enable screen adapt. but screen adapt already enabled");
+            }
+
             if (!wantEnable && adaptEnable) {
                 Util.d("activity = " +
                         activity.getClass().getCanonicalName() +
-                        " don't want enable screen adapt. so cancel it");
+                        " want cancel screen adapt. so do it");
                 cancelAdapt();
             }
         }
@@ -340,7 +346,14 @@ public class ScreenAdaptManager {
 
         @Override
         public void onActivityResumed(Activity activity) {
-
+            Intent intent = activity.getIntent();
+            boolean wantEnable = intent.getBooleanExtra(KEY_ADAPT_ENABLE, false);
+            if(wantEnable && !adaptEnable){
+                Util.d("activity = " +
+                        activity.getClass().getCanonicalName() +
+                        " enable screen adapt.");
+                enableAdapt();
+            }
         }
 
         @Override
@@ -348,7 +361,7 @@ public class ScreenAdaptManager {
             if (activity.isFinishing() && adaptEnable) {
                 Util.d("activity = " +
                         activity.getClass().getCanonicalName() +
-                        " is going to finish. so cancel screen adapt");
+                        " is going to finish. cancel screen adapt");
                 cancelAdapt();
             }
         }
