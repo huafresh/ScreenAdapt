@@ -78,6 +78,12 @@
         android:text="使用activity"/>
 
     <Button
+        android:id="@+id/app"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="使用app"/>
+
+    <Button
         android:id="@+id/adapt"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"

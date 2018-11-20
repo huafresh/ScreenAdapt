@@ -33,14 +33,13 @@ import java.util.List;
  */
 
 public class ScreenAdaptManager {
-
+    public static boolean sGlobalEnable = true;
     public static final int DP_WIDTH_SP_WIDTH = 0;
     public static final int DP_WIDTH_SP_HEIGHT = 1;
     public static final int DP_HEIGHT_SP_WIDTH = 2;
     public static final int DP_HEIGHT_SP_HEIGHT = 3;
     private static final String KEY_ADAPT_ENABLE = "key_has_set_factory";
     private static final String KEY_ADAPT_BASE_DIMEN = "key_adapt_base_dimen";
-    private static final String KEY_HAS_SET_FACTORY = "KEY_HAS_SET_FACTORY";
     private Context context;
     private DisplayMetricsInfo originDisplayInfo;
     private SparseArray<IAdaptService> adaptServices;
@@ -114,15 +113,9 @@ public class ScreenAdaptManager {
     public void adapt(Activity activity, int baseDimen) {
         ensureInitialization();
         Intent intent = activity.getIntent();
-        boolean hasSetFactory = intent.getBooleanExtra(KEY_HAS_SET_FACTORY, false);
-        if (!hasSetFactory) {
-            ActivityInflaterFactory factory = new ActivityInflaterFactory(activity);
-            forceSetFactoryIfNeed(activity.getLayoutInflater(), factory);
-            intent.putExtra(KEY_ADAPT_ENABLE, true);
-            intent.putExtra(KEY_ADAPT_BASE_DIMEN, baseDimen);
-        }
+        intent.putExtra(KEY_ADAPT_ENABLE, true);
+        intent.putExtra(KEY_ADAPT_BASE_DIMEN, baseDimen);
     }
-
 
     private static void forceSetFactoryIfNeed(LayoutInflater layoutInflater, LayoutInflater.Factory2 factory) {
         if (layoutInflater.getFactory() == null) {
@@ -220,7 +213,7 @@ public class ScreenAdaptManager {
     }
 
     public void enableAdapt(int base) {
-        if (!adaptEnable) {
+        if (!adaptEnable && sGlobalEnable) {
             IAdaptService adaptService = adaptServices.get(base);
             if (adaptService == null) {
                 Util.e("attempt enable adapt with a bad base = " + base +
@@ -232,6 +225,10 @@ public class ScreenAdaptManager {
             adaptEnable = true;
             Util.d("enable screen adapt successful. base = " + getBaseStringByInt(base));
         }
+    }
+
+    public boolean getEnableState() {
+        return adaptEnable;
     }
 
     private static String getBaseStringByInt(int base) {
@@ -293,8 +290,9 @@ public class ScreenAdaptManager {
     }
 
     private class ActivityInflaterFactory extends AppInflaterFactory {
-        private int baseDimen;
         private WeakReference<Activity> activity;
+        private boolean wantEnable;
+        private int baseDimen;
 
         private ActivityInflaterFactory(Activity activity) {
             this.activity = new WeakReference<Activity>(activity);
@@ -302,14 +300,38 @@ public class ScreenAdaptManager {
             this.baseDimen = intent.getIntExtra(KEY_ADAPT_BASE_DIMEN, DP_WIDTH_SP_HEIGHT);
         }
 
+        private void getEnableState() {
+            if (activity.get() != null) {
+                Intent intent = activity.get().getIntent();
+                if (intent != null) {
+                    wantEnable = intent.getBooleanExtra(KEY_ADAPT_ENABLE, false);
+                    baseDimen = intent.getIntExtra(KEY_ADAPT_BASE_DIMEN, DP_WIDTH_SP_HEIGHT);
+                    return;
+                }
+            }
+
+            this.wantEnable = false;
+            this.baseDimen = DP_WIDTH_SP_HEIGHT;
+        }
+
         @Override
         public View onCreateView(View parent, String name, Context context, AttributeSet attrs) {
+            getEnableState();
             if (activity.get() != null) {
                 if (!adaptEnable) {
-                    Util.d("activity = " +
-                            activity.get().getClass().getCanonicalName() +
-                            " enable screen adapt.");
-                    enableAdapt(baseDimen);
+                    if (wantEnable) {
+                        Util.d("activity = " +
+                                activity.get().getClass().getCanonicalName() +
+                                " enable screen adapt.");
+                        enableAdapt(baseDimen);
+                    }
+                } else {
+                    if (!wantEnable) {
+                        Util.d("activity = " +
+                                activity.get().getClass().getCanonicalName() +
+                                " cancel screen adapt.");
+                        cancelAdapt();
+                    }
                 }
             }
             return null;
@@ -325,20 +347,8 @@ public class ScreenAdaptManager {
 
         @Override
         public void onActivityCreated(Activity activity, Bundle savedInstanceState) {
-            Intent intent = activity.getIntent();
-            boolean wantEnable = intent.getBooleanExtra(KEY_ADAPT_ENABLE, false);
-            if (wantEnable && adaptEnable) {
-                Util.d("activity = " +
-                        activity.getClass().getCanonicalName() +
-                        " want enable screen adapt. but screen adapt already enabled");
-            }
 
-            if (!wantEnable && adaptEnable) {
-                Util.d("activity = " +
-                        activity.getClass().getCanonicalName() +
-                        " want cancel screen adapt. so do it");
-                cancelAdapt();
-            }
+            forceSetFactoryIfNeed(activity.getLayoutInflater(), new ActivityInflaterFactory(activity));
         }
 
         @Override
@@ -348,24 +358,10 @@ public class ScreenAdaptManager {
 
         @Override
         public void onActivityResumed(Activity activity) {
-            Intent intent = activity.getIntent();
-            boolean wantEnable = intent.getBooleanExtra(KEY_ADAPT_ENABLE, false);
-            if (wantEnable && !adaptEnable) {
-                Util.d("activity = " +
-                        activity.getClass().getCanonicalName() +
-                        " enable screen adapt.");
-                enableAdapt();
-            }
         }
 
         @Override
         public void onActivityPaused(Activity activity) {
-            if (activity.isFinishing() && adaptEnable) {
-                Util.d("activity = " +
-                        activity.getClass().getCanonicalName() +
-                        " is going to finish. cancel screen adapt");
-                cancelAdapt();
-            }
         }
 
         @Override
