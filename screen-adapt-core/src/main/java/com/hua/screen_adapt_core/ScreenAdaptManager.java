@@ -40,7 +40,7 @@ public class ScreenAdaptManager {
     public static final int DP_HEIGHT_SP_HEIGHT = 3;
     private static final String KEY_ADAPT_ENABLE = "key_has_set_factory";
     private static final String KEY_ADAPT_BASE_DIMEN = "key_adapt_base_dimen";
-    private static final String KEY_has_set_factory = "KEY_has_set_factory";
+    private static final String KEY_HAS_SET_FACTORY = "KEY_HAS_SET_FACTORY";
     private Context context;
     private DisplayMetricsInfo originDisplayInfo;
     private SparseArray<IAdaptService> adaptServices;
@@ -114,7 +114,7 @@ public class ScreenAdaptManager {
     public void adapt(Activity activity, int baseDimen) {
         ensureInitialization();
         Intent intent = activity.getIntent();
-        boolean hasSetFactory = intent.getBooleanExtra(KEY_has_set_factory, false);
+        boolean hasSetFactory = intent.getBooleanExtra(KEY_HAS_SET_FACTORY, false);
         if (!hasSetFactory) {
             ActivityInflaterFactory factory = new ActivityInflaterFactory(activity);
             forceSetFactoryIfNeed(activity.getLayoutInflater(), factory);
@@ -164,9 +164,9 @@ public class ScreenAdaptManager {
 
     /**
      * 这个方法的适配方案是根据View的
-     * 各种属性值反推原来的dp值，然后再用设计图的尺寸重新计算每个属性值，最后设置回去。
-     * 目前只对常见的属性做了处理，可以调用{@link #addAttrType(AttrType)}进行扩展，
-     * 参考{@link AttrType}。
+     * 各种布局参数反推原来的dp值，然后再用设计图的尺寸重新计算每个布局参数，最后设置回去。
+     * 目前只对常见的布局参数做了处理，比如：宽高、margin、padding。
+     * 可以调用{@link #addAttrType(AttrType)}进行扩展，参考{@link AttrType}。
      * <p>
      * 这个方法注意不要调用多次。一般来说，在onCreate中find出View然后调用此方法最佳。
      *
@@ -175,22 +175,24 @@ public class ScreenAdaptManager {
      */
     public void adapt(final View view, final int baseDimen) {
         ensureInitialization();
-        view.post(new Runnable() {
-            @Override
-            public void run() {
-                List<View> views = new ArrayList<>();
-                collectViews(view, views);
 
-                IAdaptService base = adaptServices.get(baseDimen);
-                for (View v : views) {
-                    for (AttrType attrType : attrTypes) {
-                        attrType.adapt(v, base);
-                    }
-                    ViewGroup.LayoutParams params = v.getLayoutParams();
-                    v.setLayoutParams(params);
-                }
+        if ("true".equals(view.getTag(R.id.key_already_adapt))) {
+            Util.d("view = " + view + " already adapt, ignore!!!");
+            return;
+        }
+
+        view.setTag(R.id.key_already_adapt, "true");
+
+        List<View> views = new ArrayList<>();
+        collectViews(view, views);
+        IAdaptService base = adaptServices.get(baseDimen);
+        for (View v : views) {
+            for (AttrType attrType : attrTypes) {
+                attrType.adapt(v, base);
             }
-        });
+            ViewGroup.LayoutParams params = v.getLayoutParams();
+            v.setLayoutParams(params);
+        }
     }
 
     public int dp2px(Context context, int dp) {
@@ -325,7 +327,7 @@ public class ScreenAdaptManager {
         public void onActivityCreated(Activity activity, Bundle savedInstanceState) {
             Intent intent = activity.getIntent();
             boolean wantEnable = intent.getBooleanExtra(KEY_ADAPT_ENABLE, false);
-            if(wantEnable && adaptEnable){
+            if (wantEnable && adaptEnable) {
                 Util.d("activity = " +
                         activity.getClass().getCanonicalName() +
                         " want enable screen adapt. but screen adapt already enabled");
@@ -348,7 +350,7 @@ public class ScreenAdaptManager {
         public void onActivityResumed(Activity activity) {
             Intent intent = activity.getIntent();
             boolean wantEnable = intent.getBooleanExtra(KEY_ADAPT_ENABLE, false);
-            if(wantEnable && !adaptEnable){
+            if (wantEnable && !adaptEnable) {
                 Util.d("activity = " +
                         activity.getClass().getCanonicalName() +
                         " enable screen adapt.");

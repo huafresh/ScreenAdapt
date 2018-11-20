@@ -14,7 +14,7 @@ public class MainActivity extends AppCompatActivity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        ScreenAdaptManager.get().adapt(this);
+//        ScreenAdaptManager.get().adapt(this);
         setContentView(R.layout.activity_main);
         findViewById(R.id.second).setOnClickListener(new View.OnClickListener() {
             @Override
@@ -27,6 +27,13 @@ public class MainActivity extends AppCompatActivity {
             @Override
             public void onClick(View v) {
                 LayoutInflater.from(MainActivity.this).inflate(R.layout.layout_temp, null);
+            }
+        });
+        final LinearLayout linearLayout = (LinearLayout) findViewById(R.id.ll_2);
+        findViewById(R.id.adapt).setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                ScreenAdaptManager.get().adapt(linearLayout);
             }
         });
 
